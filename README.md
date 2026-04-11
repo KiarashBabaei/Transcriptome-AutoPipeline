@@ -36,20 +36,19 @@ Because of this, the detection and quantification of retained intron events prov
 
 ```mermaid
 flowchart TD
-    A[SRA] --> B[prefetch]
+    A[SRA data] --> B[prefetch]
     B --> C[FASTQ]
     C --> D[Salmon]
-    D --> E[TPM]
+    D --> E[TPM matrix]
     E --> F[SUPPA2]
-    F --> G[RI]
-    G --> H[PSI]
+    F --> G[RI events]
+    G --> H[PSI values]
 
     subgraph Metadata
         M1[GEO] --> M2[Merge] --> M3[Select]
     end
 
     M3 --> C
-
 ```
 
 ---
