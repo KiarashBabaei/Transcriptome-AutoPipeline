@@ -34,8 +34,7 @@ Because of this, the detection and quantification of retained intron events prov
 
 ## Pipeline Flowchart
 
-
-``````mermaid
+```mermaid
 flowchart TD
     A[SRA Metadata] --> B[prefetch download]
     B --> C[fasterq dump FASTQ]
@@ -49,8 +48,8 @@ flowchart TD
     J --> K[RI PSI output]
 
     subgraph Metadata
-    M1[GEO conditions] --> M2[Merge with SRA]
-    M2 --> M3[Selected SRR IDs]
+        M1[GEO conditions] --> M2[Merge with SRA]
+        M2 --> M3[Selected SRR IDs]
     end
 
     M3 --> C
@@ -60,14 +59,14 @@ flowchart TD
 
 ## Key Features
 
-* Automated download of SRA datasets using `prefetch`
-* FASTQ generation via `fasterq-dump`
-* Transcriptome indexing and quantification using `Salmon`
-* Transcript-level TPM matrix construction
-* Integration of GEO and SRA metadata for biologically informed sample selection
-* SUPPA2-based alternative splicing event generation
-* PSI calculation focused on **retained intron (RI)** events
-* Fully reproducible pipeline from raw data to splicing profiles
+- Automated download of SRA datasets using `prefetch`
+- FASTQ generation via `fasterq-dump`
+- Transcriptome indexing and quantification using `Salmon`
+- Transcript-level TPM matrix construction
+- Integration of GEO and SRA metadata for biologically informed sample selection
+- SUPPA2-based alternative splicing event generation
+- PSI calculation focused on **retained intron (RI)** events
+- Fully reproducible pipeline from raw data to splicing profiles
 
 ---
 
