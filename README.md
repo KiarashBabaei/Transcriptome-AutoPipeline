@@ -34,8 +34,6 @@ Because of this, the detection and quantification of retained intron events prov
 
 ## Pipeline Flowchart
 
-```## Pipeline Flowchart
-
 ```mermaid
 flowchart TD
     A[SRA] --> B[prefetch]
