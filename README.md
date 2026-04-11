@@ -34,8 +34,7 @@ Because of this, the detection and quantification of retained intron events prov
 
 ## Pipeline Flowchart
 
-```mermaid
-## Pipeline Flowchart
+```## Pipeline Flowchart
 
 ```mermaid
 flowchart TD
@@ -52,6 +51,7 @@ flowchart TD
     end
 
     M3 --> C
+
 ```
 
 ---
