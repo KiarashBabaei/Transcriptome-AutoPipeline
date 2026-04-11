@@ -31,18 +31,17 @@ However, when **intron retention** occurs, intronic regions containing snoRNA se
 Because of this, the detection and quantification of retained intron events provides a biologically meaningful strategy to identify candidate snoRT-associated transcripts in RNA-seq datasets.
 
 ---
-
 ## Pipeline Flowchart
 
 ```mermaid
 flowchart TD
-    A[SRA data] --> B[prefetch]
+    A[SRA] --> B[prefetch]
     B --> C[FASTQ]
     C --> D[Salmon]
-    D --> E[TPM matrix]
+    D --> E[TPM]
     E --> F[SUPPA2]
-    F --> G[RI events]
-    G --> H[PSI values]
+    F --> G[RI]
+    G --> H[PSI]
 
     subgraph Metadata
         M1[GEO] --> M2[Merge] --> M3[Select]
@@ -50,6 +49,16 @@ flowchart TD
 
     M3 --> C
 ```
+
+**Legend (details):**
+- **SRA**: public sequencing data (raw reads)
+- **prefetch**: download .sra files (SRA Toolkit)
+- **FASTQ**: read extraction via `fasterq-dump`
+- **Salmon**: transcript-level quantification
+- **TPM**: normalized expression matrix
+- **SUPPA2**: alternative splicing analysis
+- **RI**: retained intron events
+- **PSI**: Percent Spliced In (intron inclusion level)
 
 ---
 
