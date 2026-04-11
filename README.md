@@ -36,20 +36,24 @@ Because of this, the detection and quantification of retained intron events prov
 
 ```mermaid
 flowchart LR
+
+    %% Main pipeline (top)
     A[SRA metadata] --> B[prefetch]
     B --> C[fasterq dump]
-    C --> D[FASTQ files]
+    C --> D[FASTQ]
     D --> E[Salmon index]
     E --> F[Salmon quant]
+
+    %% Second layer
     F --> G[quant.sf]
     G --> H[TPM matrix]
     H --> I[SUPPA2 events]
     I --> J[RI events]
-    J --> K[PSI calculation]
-    K --> L[RI PSI output]
+    J --> K[PSI values]
 
+    %% Metadata block
     subgraph Metadata
-        M1[GEO conditions] --> M2[Merge metadata]
+        M1[GEO data] --> M2[Merge]
         M2 --> M3[Selected samples]
     end
 
