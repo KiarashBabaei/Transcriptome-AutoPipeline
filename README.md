@@ -34,6 +34,8 @@ Because of this, the detection and quantification of retained intron events prov
 
 ## Pipeline Flowchart
 
+
+``````mermaid
 flowchart TD
     A[SRA Metadata] --> B[prefetch download]
     B --> C[fasterq dump FASTQ]
