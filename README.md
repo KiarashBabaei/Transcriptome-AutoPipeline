@@ -1,5 +1,5 @@
 ## Overview
-# Transcriptome-AutoPipeline
+# Transcriptome-AutoPipeline: Integrative RI and snoRT Detection Framework
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![R](https://img.shields.io/badge/R-4.4%2B-yellow)
