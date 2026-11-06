@@ -52,54 +52,33 @@ The detection and quantification of retained intron events therefore provides a 
 
 ## Pipeline Flowchart
 
-```
-flowchart TD
-    subgraph META [" Metadata Branch "]
-        direction TB
-        GEO[GEO]:::meta
-        MERGE[Merge SRA and GEO]:::meta
-        SEL[Select Samples]:::meta
-        GEO --> MERGE --> SEL
-    end
+```mermaid
+graph TD
+    GEO[GEO Metadata] --> MERGE[Merge SRA + GEO]
+    MERGE --> SEL[Select Samples]
 
-    subgraph MAIN [" Main Pipeline "]
-        direction TB
-        SRA[SRA Archive]:::input
-        PRE[prefetch]:::tool
-        FQ[fasterq-dump]:::tool
-        SAL[Salmon]:::tool
-        TPM[TPM Matrix]:::data
-        SUP[SUPPA2]:::tool
-        RI[RI Events]:::data
-        PSI[PSI Output]:::output
-
-        SRA --> PRE --> FQ --> SAL --> TPM --> SUP --> RI --> PSI
-    end
-
-    subgraph RANALYSIS [" R Downstream Analysis "]
-        direction TB
-        RLOAD[Load PSI + Metadata]:::rtool
-        WILCOX[Wilcoxon Test per Event]:::rtool
-        FDR[BH FDR Correction]:::rtool
-        SNORNA[snoRNA-level Summary]:::rout
-        VIZ[Visualizations]:::rout
-        RLOAD --> WILCOX --> FDR --> SNORNA --> VIZ
-    end
-
-    subgraph ML [" Machine Learning Module "]
-        direction TB
-        MLLOAD[Load PSI + Gleason]:::mltool
-        SPLIT[Stratified 80/20 Split]:::mltool
-        PREP[Leak-free Preprocessing]:::mltool
-        LR[Logistic Regression L2]:::mlout
-        SVM[Linear SVM]:::mlout
-        EVAL[Evaluation 20 Repeated Splits]:::mlout
-        MLLOAD --> SPLIT --> PREP --> LR & SVM --> EVAL
-    end
-
+    SRA[SRA Archive] --> PRE[prefetch]
+    PRE --> FQ[fasterq-dump]
     SEL -->|sample IDs| FQ
-    PSI -->|RI_events_with_snoRNA.tsv| RLOAD
-    PSI -->|RI_events_with_snoRNA.tsv| MLLOAD
+    FQ --> SAL[Salmon Quantification]
+    SAL --> TPM[TPM Matrix]
+    TPM --> SUP[SUPPA2]
+    SUP --> RI[RI Events .ioe]
+    RI --> PSI[PSI Output RI.psi]
+
+    PSI -->|RI_events_with_snoRNA.tsv| RLOAD[Load PSI + Metadata]
+    RLOAD --> WILCOX[Wilcoxon Test per Event]
+    WILCOX --> FDR[BH FDR Correction]
+    FDR --> SNORNA[snoRNA-level Summary]
+    SNORNA --> VIZ[Heatmap Visualization]
+
+    PSI -->|RI_events_with_snoRNA.tsv| MLLOAD[Load PSI + Gleason]
+    MLLOAD --> SPLIT[Stratified 80/20 Split]
+    SPLIT --> PREP[Leak-free Preprocessing]
+    PREP --> LR[Logistic Regression L2]
+    PREP --> SVM[Linear SVM]
+    LR --> EVAL[Evaluation 20 Repeated Splits]
+    SVM --> EVAL
 ```
 
 ---
