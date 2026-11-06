@@ -54,31 +54,59 @@ The detection and quantification of retained intron events therefore provides a 
 
 ```mermaid
 graph TD
-    GEO[GEO Metadata] --> MERGE[Merge SRA + GEO]
-    MERGE --> SEL[Select Samples]
 
-    SRA[SRA Archive] --> PRE[prefetch]
-    PRE --> FQ[fasterq-dump]
+    %% ── Metadata Branch ──────────────────────────────────────────
+    GEO["🗂️ GEO Metadata"]:::meta
+    MERGE["🔗 Merge SRA + GEO"]:::meta
+    SEL["✅ Select Samples"]:::meta
+    GEO --> MERGE --> SEL
+
+    %% ── Main Pipeline ────────────────────────────────────────────
+    SRA["📦 SRA Archive"]:::input
+    PRE["⬇️ prefetch"]:::tool
+    FQ["📄 fasterq-dump"]:::tool
+    SAL["🐟 Salmon Quantification"]:::tool
+    TPM["📊 TPM Matrix"]:::data
+    SUP["🔬 SUPPA2"]:::tool
+    RI["🧬 RI Events .ioe"]:::data
+    PSI["📈 PSI Output RI.psi"]:::output
+
+    SRA --> PRE --> FQ --> SAL --> TPM --> SUP --> RI --> PSI
     SEL -->|sample IDs| FQ
-    FQ --> SAL[Salmon Quantification]
-    SAL --> TPM[TPM Matrix]
-    TPM --> SUP[SUPPA2]
-    SUP --> RI[RI Events .ioe]
-    RI --> PSI[PSI Output RI.psi]
 
-    PSI -->|RI_events_with_snoRNA.tsv| RLOAD[Load PSI + Metadata]
-    RLOAD --> WILCOX[Wilcoxon Test per Event]
-    WILCOX --> FDR[BH FDR Correction]
-    FDR --> SNORNA[snoRNA-level Summary]
-    SNORNA --> VIZ[Heatmap Visualization]
+    %% ── R Downstream Analysis ────────────────────────────────────
+    RLOAD["📥 Load PSI + Metadata"]:::rtool
+    WILCOX["📉 Wilcoxon Test per Event"]:::rtool
+    FDR["🔧 BH FDR Correction"]:::rtool
+    SNORNA["🧪 snoRNA-level Summary"]:::rout
+    VIZ["🗺️ Heatmap Visualization"]:::rout
 
-    PSI -->|RI_events_with_snoRNA.tsv| MLLOAD[Load PSI + Gleason]
-    MLLOAD --> SPLIT[Stratified 80/20 Split]
-    SPLIT --> PREP[Leak-free Preprocessing]
-    PREP --> LR[Logistic Regression L2]
-    PREP --> SVM[Linear SVM]
-    LR --> EVAL[Evaluation 20 Repeated Splits]
-    SVM --> EVAL
+    PSI -->|RI_events_with_snoRNA.tsv| RLOAD
+    RLOAD --> WILCOX --> FDR --> SNORNA --> VIZ
+
+    %% ── Machine Learning Module ──────────────────────────────────
+    MLLOAD["📥 Load PSI + Gleason Labels"]:::mltool
+    SPLIT["✂️ Stratified 80/20 Split"]:::mltool
+    PREP["⚙️ Leak-free Preprocessing\nImputer · VarFilter · Scaler"]:::mltool
+    LR["📐 Logistic Regression L2\nLogisticRegressionCV"]:::mlout
+    SVM["📏 Linear SVM\nCalibratedClassifierCV"]:::mlout
+    EVAL["📋 Evaluation\n20 Repeated Splits\nAUC · Accuracy · F1"]:::mlout
+
+    PSI -->|RI_events_with_snoRNA.tsv| MLLOAD
+    MLLOAD --> SPLIT --> PREP
+    PREP --> LR --> EVAL
+    PREP --> SVM --> EVAL
+
+    %% ── Styles ───────────────────────────────────────────────────
+    classDef meta    fill:#2d6a4f,stroke:#1b4332,color:#fff
+    classDef input   fill:#1d3557,stroke:#0d1b2a,color:#fff
+    classDef tool    fill:#457b9d,stroke:#1d3557,color:#fff
+    classDef data    fill:#6a4c93,stroke:#3d2b6b,color:#fff
+    classDef output  fill:#e76f51,stroke:#b5451c,color:#fff
+    classDef rtool   fill:#2a9d8f,stroke:#1a6b60,color:#fff
+    classDef rout    fill:#264653,stroke:#0d1b22,color:#fff
+    classDef mltool  fill:#8338ec,stroke:#5a1fc0,color:#fff
+    classDef mlout   fill:#c77dff,stroke:#7b2d8b,color:#1a1a1a
 ```
 
 ---
