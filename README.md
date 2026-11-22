@@ -1,14 +1,16 @@
 # Transcriptome-AutoPipeline: Integrative RI and snoRT Detection Framework
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![R](https://img.shields.io/badge/R-4.4%2B-yellow)
+![R](https://img.shields.io/badge/R-4.3%2B-yellow)
 ![Salmon](https://img.shields.io/badge/Salmon-supported-brightgreen)
 ![SUPPA2](https://img.shields.io/badge/SUPPA2-enabled-orange)
 ![SRA Toolkit](https://img.shields.io/badge/SRA--Toolkit-required-lightgrey)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.0%2B-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-An automated, reproducible RNA-seq workflow for processing public transcriptomic datasets from raw sequencing data to biologically interpretable splicing outputs, with a specific focus on retained intron (RI) events and snoRNA-retaining transcript (snoRT) discovery. The pipeline now includes a fully leak-free machine learning module for Gleason grade classification using RI-derived PSI features.
+An automated, reproducible RNA-seq workflow for processing public transcriptomic datasets from raw sequencing data to biologically interpretable splicing outputs, with a specific focus on retained intron (RI) events and snoRNA-retaining transcript (snoRT) discovery. Downstream statistics (R) and machine learning (Python) are replication-aware: technical sequencing lanes are merged per library and all evaluation is done at patient level.
+
+> **Note on results (v2, November 2026).** An earlier version of this repository reported 17 significant RI events and a Gleason classifier with AUC 0.93. Those numbers were inflated by counting the 4 sequencing lanes of each library as separate samples, by mixing 12 single-cell runs with bulk data, and by splitting tumour and normal tissue of the same patient across training and validation sets. The corrected analysis is described below; the previous version is preserved under the tag [`v1-before-correction`](https://github.com/KiarashBabaei/Transcriptome-AutoPipeline/tree/v1-before-correction).
 
 ---
 
@@ -21,8 +23,10 @@ An automated, reproducible RNA-seq workflow for processing public transcriptomic
 - [Repository Structure](#repository-structure)
 - [Pipeline Workflow](#pipeline-workflow)
 - [Core Outputs](#core-outputs)
+- [Dataset Structure: Runs, Libraries and Patients](#dataset-structure-runs-libraries-and-patients)
 - [Downstream Statistical Analysis (R)](#downstream-statistical-analysis-r)
 - [Machine Learning Module](#machine-learning-module)
+- [Correction Log: What Changed from v1](#correction-log-what-changed-from-v1)
 - [Requirements](#requirements)
 - [Future Work](#future-work)
 - [Biological Summary](#biological-summary)
@@ -34,9 +38,9 @@ An automated, reproducible RNA-seq workflow for processing public transcriptomic
 
 **Transcriptome-AutoPipeline** is a Python + R workflow designed to re-analyze public RNA-seq datasets (e.g., human cancer cohorts) in a fully automated and reproducible manner.
 
-The pipeline performs the complete transition from raw sequencing data (SRA) to transcript-level quantification, alternative splicing analysis, differential intron retention testing, and downstream machine learning classification of tumor grade based on PSI features. It supports both full dataset processing and biologically informed sample selection through metadata integration.
+The pipeline performs the complete transition from raw sequencing data (SRA) to transcript-level quantification, alternative splicing analysis, differential intron retention testing, and machine learning on PSI features. It supports both full dataset processing and biologically informed sample selection through metadata integration.
 
-The primary biological objective is the identification and quantification of **retained intron (RI)** events as a computational entry point for studying **snoRNA-retaining transcripts (snoRTs)** — and their utility as classifiers of prostate cancer aggressiveness.
+The primary biological objective is the identification and quantification of **retained intron (RI)** events as a computational entry point for studying **snoRNA-retaining transcripts (snoRTs)**, and testing whether they differ between healthy prostate, adjacent normal tissue and tumours of different grades.
 
 ---
 
@@ -46,7 +50,7 @@ Many small nucleolar RNAs (snoRNAs) are encoded within intronic regions of host 
 
 When **intron retention** occurs, intronic regions containing snoRNA sequences may remain embedded within transcript isoforms — these are referred to as **snoRNA-retaining transcripts (snoRTs)**.
 
-The detection and quantification of retained intron events therefore provides a biologically meaningful strategy to identify candidate snoRT-associated transcripts in RNA-seq datasets. This pipeline operationalizes that strategy across a multi-group prostate cancer cohort, and extends it to a supervised classification task: predicting Gleason grade from RI-derived PSI values.
+The detection and quantification of retained intron events therefore provides a biologically meaningful strategy to identify candidate snoRT-associated transcripts in RNA-seq datasets. snoRTs remain an understudied class of transcripts; this pipeline operationalizes the strategy across a multi-group prostate cancer cohort.
 
 ---
 
@@ -74,28 +78,20 @@ graph TD
     SRA --> PRE --> FQ --> SAL --> TPM --> SUP --> RI --> PSI
     SEL -->|sample IDs| FQ
 
-    %% ── R Downstream Analysis ────────────────────────────────────
-    RLOAD["📥 Load PSI + Metadata"]:::rtool
-    WILCOX["📉 Wilcoxon Test per Event"]:::rtool
-    FDR["🔧 BH FDR Correction"]:::rtool
-    SNORNA["🧪 snoRNA-level Summary"]:::rout
-    VIZ["🗺️ Heatmap Visualization"]:::rout
+    %% ── Shared preprocessing ─────────────────────────────────────
+    PREP["🧹 Bulk only · merge 4 lanes per library\n(39 libraries, ~19 patients)"]:::prep
+    PSI -->|RI_events_with_snoRNA.tsv| PREP
 
-    PSI -->|RI_events_with_snoRNA.tsv| RLOAD
-    RLOAD --> WILCOX --> FDR --> SNORNA --> VIZ
+    %% ── R Statistics ─────────────────────────────────────────────
+    STATS["📉 S1–S7: Wilcoxon · filtered · snoRNA-level\nSpearman · mixed model · global RI index · paired T vs N"]:::rtool
+    RFDR["🔧 BH FDR per analysis"]:::rout
+    PREP --> STATS --> RFDR
 
-    %% ── Machine Learning Module ──────────────────────────────────
-    MLLOAD["📥 Load PSI + Gleason Labels"]:::mltool
-    SPLIT["✂️ Stratified 80/20 Split"]:::mltool
-    PREP["⚙️ Leak-free Preprocessing\nImputer · VarFilter · Scaler"]:::mltool
-    LR["📐 Logistic Regression L2\nLogisticRegressionCV"]:::mlout
-    SVM["📏 Linear SVM\nCalibratedClassifierCV"]:::mlout
-    EVAL["📋 Evaluation\n20 Repeated Splits\nAUC · Accuracy · F1"]:::mlout
-
-    PSI -->|RI_events_with_snoRNA.tsv| MLLOAD
-    MLLOAD --> SPLIT --> PREP
-    PREP --> LR --> EVAL
-    PREP --> SVM --> EVAL
+    %% ── Machine Learning ─────────────────────────────────────────
+    LOPO["✂️ Leave-one-patient-out"]:::mltool
+    LR["📐 L2 Logistic Regression\nfitted inside each fold"]:::mltool
+    EVAL["📋 AUC + bootstrap CI\nbalanced acc · MCC · permutation p"]:::mlout
+    PREP --> LOPO --> LR --> EVAL
 
     %% ── Styles ───────────────────────────────────────────────────
     classDef meta    fill:#2d6a4f,stroke:#1b4332,color:#fff
@@ -103,6 +99,7 @@ graph TD
     classDef tool    fill:#457b9d,stroke:#1d3557,color:#fff
     classDef data    fill:#6a4c93,stroke:#3d2b6b,color:#fff
     classDef output  fill:#e76f51,stroke:#b5451c,color:#fff
+    classDef prep    fill:#f4a261,stroke:#b5651d,color:#1a1a1a
     classDef rtool   fill:#2a9d8f,stroke:#1a6b60,color:#fff
     classDef rout    fill:#264653,stroke:#0d1b22,color:#fff
     classDef mltool  fill:#8338ec,stroke:#5a1fc0,color:#fff
@@ -119,9 +116,9 @@ graph TD
 - Transcript-level TPM matrix construction
 - Integration of GEO and SRA metadata for biologically informed sample selection
 - SUPPA2-based alternative splicing event generation
-- PSI calculation focused on **retained intron (RI)** events
-- **R-based downstream analysis**: Wilcoxon testing, BH FDR correction, snoRNA-level summarization, and differential splicing visualization
-- **Python ML module**: fully leak-free Logistic Regression and Linear SVM classification of Gleason grade from PSI features, with 20-split repeated evaluation for robust performance estimation
+- PSI calculation focused on **retained intron (RI)** events overlapping snoRNAs
+- **Replication-aware statistics (R)**: lane merging per library, seven pre-specified analyses including linear mixed models and paired tumour vs normal tests
+- **Patient-level ML evaluation (Python)**: leave-one-patient-out validation, permutation testing and bootstrap confidence intervals
 - Fully reproducible pipeline from raw data to statistical and ML results
 
 ---
@@ -134,27 +131,32 @@ Transcriptome-AutoPipeline/
 ├── scripts/
 │   ├── transcriptome_pipeline.py
 │   ├── transcriptome_pipeline_selected.py
-│   └── extract_geo_metadata.py
+│   ├── extract_geo_metadata.py
+│   └── run_statistical_analysis.R     ← statistics S1–S7
 │
 ├── ml/
-│   └── gleason_lr.py                  ← ML classification module
+│   └── gleason_lr.py                  ← ML analyses M0–M4
+│
+├── metadata/
+│   └── SraRunTable.csv
 │
 ├── figures/
-│   ├── heatmap_snorna_RI.png
-│   └── gleason_lr_results.png         ← ML output figure
+│   ├── S1_volcano_RI_events.png
+│   ├── S6_global_RI_index.png
+│   └── ml_results.png
 │
-├── SraRunTable.csv
+├── results/
+│   ├── RI_events_with_snoRNA.tsv      ← annotated PSI matrix (input to R and ML)
+│   ├── stats/                         ← R output tables
+│   └── ml/                            ← ML output tables
+│
 ├── GSE181294_conditions.csv
 ├── gencode.v43.transcripts.fa.gz
 ├── gencode.v43.annotation.gtf
-│
 ├── fastq_output/
-├── results/
-│   └── event_dPSI_results.tsv
 ├── salmon_index/
 ├── events_ioe/
 └── suppa_results/
-    ├── RI_events_with_snoRNA.tsv      ← annotated PSI matrix (input to R and ML)
     └── RI.psi
 ```
 
@@ -184,6 +186,15 @@ Outputs: `merged_SRA_GEO.csv`, `selected_SRR_ids.txt`
 python3 scripts/transcriptome_pipeline_selected.py
 ```
 
+### 4. Statistics and Machine Learning
+
+Run from the repository root, with `results/RI_events_with_snoRNA.tsv` and `metadata/SraRunTable.csv` in place:
+
+```bash
+Rscript scripts/run_statistical_analysis.R     # ~30 s
+python3 ml/gleason_lr.py                       # ~2 min (1,000 permutations)
+```
+
 ---
 
 ## Core Outputs
@@ -194,161 +205,131 @@ python3 scripts/transcriptome_pipeline_selected.py
 | `TPM_SUPPA2_final.tsv` | Salmon | TPM matrix across all samples |
 | `events_ioe/events_RI_strict.ioe` | SUPPA2 | Retained intron event definitions |
 | `suppa_results/RI.psi` | SUPPA2 | PSI values per RI event per sample |
-| `RI_events_with_snoRNA.tsv` | Annotation | PSI matrix annotated with snoRNA host gene |
-| `event_dPSI_results.tsv` | R | ΔPSI, p-value, FDR per event per contrast |
-| `gleason_lr_results.png` | ML | Classification performance figure |
+| `results/RI_events_with_snoRNA.tsv` | Annotation | PSI matrix of RI events overlapping snoRNAs |
+| `results/stats/SUMMARY_all_analyses.tsv` | R | Number of tested and significant features per analysis and contrast |
+| `results/stats/S1…S7_*.tsv` | R | Per-feature statistics (ΔPSI, effect size, p, FDR) |
+| `results/ml/ML_summary.tsv` | ML | AUC, CI, balanced accuracy, MCC, permutation p per analysis |
+| `results/ml/M1_coefficients_exploratory.tsv` | ML | Model coefficients (exploratory only) |
+
+---
+
+## Dataset Structure: Runs, Libraries and Patients
+
+The cohort is BioProject PRJNA751490 (NextSeq 500). The run table lists 168 SRR runs, but these are not independent samples:
+
+| Level | Count | Note |
+|---|---|---|
+| SRR runs | 168 | |
+| Single-cell runs | 12 | Different assay (40–58 bp reads); excluded from the main analysis |
+| Bulk runs | 156 | 91–92 bp reads |
+| Bulk libraries (BioSamples) | 39 | Each sequenced on **4 lanes** = 4 runs → PSI averaged per library |
+| Libraries with Gleason score | 34 | 18 tumour, 16 adjacent normal |
+| Patients (proxy: age + Gleason) | ~19 | Most contribute one tumour and one normal library |
+
+Bulk libraries per group: **Healthy 5, Normal 16, Low grade 10, High grade 8** (authors' `grade` annotation: low = Gleason 6–7, high = ≥ 8).
+
+The run table contains no patient ID, so patients are inferred from age and Gleason string.
+
+**Events:** 184 unique RI events overlapping 67 snoRNAs (202 rows, because 18 introns host two snoRNAs; such events are tested once).
 
 ---
 
 ## Downstream Statistical Analysis (R)
 
-### Sample Metadata
+`scripts/run_statistical_analysis.R`
 
-Samples from `SraRunTable.csv` were classified into four biological groups:
+### Design (fixed before looking at results)
 
-| Group | N samples |
+- Unit of analysis = library (4 lanes merged); bulk libraries only
+- Benjamini–Hochberg FDR within each analysis and contrast
+- Every analysis is reported, significant or not
+
+| ID | Analysis |
 |---|---|
-| Healthy | 24 |
-| High-grade tumor | 36 |
-| Low-grade tumor | 44 |
-| Adjacent Normal | 64 |
-| **Total** | **168** |
+| S1 | Per-event Wilcoxon rank-sum, all events, 4 contrasts (+ Hodges–Lehmann estimate and 95% CI) |
+| S2 | Same as S1 after label-free independent filtering (measured in ≥ 80% of libraries, SD ≥ 0.01) |
+| S3 | snoRNA-level Wilcoxon (PSI averaged over the events of each snoRNA) |
+| S4 | Spearman correlation of PSI with Gleason score (tumour libraries) |
+| S5 | Linear mixed model on lane-level data: `PSI ~ group + (1 \| library)` |
+| S6 | Global RI index (mean z-scored PSI per library): 4 contrasts + paired tumour vs normal |
+| S7 | Paired Wilcoxon signed-rank, tumour vs adjacent normal within patient |
 
-### Statistical Design
+Contrasts: `Low_vs_Healthy`, `High_vs_Healthy`, `Normal_vs_Healthy`, `Low_vs_High`.
 
-**202 unique RI events**, each annotated with a snoRNA host gene, were tested across four contrasts:
+### Results
 
-| Contrast | Biological Question |
-|---|---|
-| `Low_vs_Healthy` | Does low-grade tumor alter intron retention vs. healthy? |
-| `High_vs_Healthy` | Does high-grade tumor alter intron retention vs. healthy? |
-| `Normal_vs_Healthy` | Does field cancerization affect intron retention? |
-| `Low_vs_High` | Does tumor grade drive differential intron retention? |
+**No event, snoRNA or global index is significant after FDR correction in any of the seven analyses.**
 
-For each (event × contrast) pair:
-- **Test**: Wilcoxon rank-sum (non-parametric, robust to PSI distribution skew)
-- **Effect size**: ΔPSI = mean(PSI group1) − mean(PSI group2)
-- **Multiple testing**: Benjamini–Hochberg FDR correction per contrast
-
-### Results: Significant RI Events
-
-**At FDR < 0.05 (any effect size):**
-
-| Contrast | Sig. Events | min FDR |
-|---|---|---|
-| Normal_vs_Healthy | **17** | 8.64 × 10⁻⁶ |
-| Low_vs_Healthy | **8** | 7.43 × 10⁻¹¹ |
-| High_vs_Healthy | 5 | 5.48 × 10⁻⁴ |
-| Low_vs_High | **0** | 3.21 × 10⁻¹ |
-
-**At FDR < 0.05 AND |ΔPSI| ≥ 0.10:**
-
-| Contrast | Sig. Events |
-|---|---|
-| Normal_vs_Healthy | **6** |
-| Low_vs_Healthy | **4** |
-| High_vs_Healthy | 0 |
-| Low_vs_High | 0 |
-
-### Results: snoRNA-Level Summary
-
-| Rank | snoRNA | Contrast | n_sig | Note |
+| Analysis | Strongest contrast | Features with p < 0.05 | FDR < 0.05 | Lowest FDR |
 |---|---|---|---|---|
-| 1 | **SNORD50B** | Normal_vs_Healthy | **4** | Strongest overall signal |
-| 2 | **SNORD50B** | Low_vs_Healthy | **3** | Consistent across 2 contrasts |
-| 3 | **SNORD47** | Normal_vs_Healthy | **2** | 2nd-ranking host gene |
-| 4 | SNORA32 | High/Low/Normal_vs_Healthy | 1 each | Broadest cross-contrast presence |
+| S1 per-event | Low vs Healthy | 8 / 109 | 0 | 0.44 |
+| S2 filtered | Low vs Healthy | 2 / 59 | 0 | 0.24 |
+| S3 snoRNA-level | Low vs Healthy | 5 / 57 | 0 | 0.23 |
+| S4 Spearman vs Gleason | — | 5 / 114 | 0 | 0.41 |
+| S5 mixed model | Low vs Healthy | 5 / 114 | 0 | 0.65 |
+| S6 global RI index | Normal vs Healthy | 1 / 1 (p = 0.043) | 0 | 0.22 |
+| S7 paired T vs N | — | 6 / 109 | 0 | 0.75 |
 
-### Visualization
+Nominal trends (hypothesis-generating only): contrasts against Healthy repeatedly show more nominal signals than within-patient contrasts, and Healthy libraries have the lowest global RI index. Recurring snoRNAs among the lowest p-values: SNORD23, SNORD50B, SNORA32, SNORD49A. With only 5 Healthy libraries these are trends, not findings.
 
-[![Heatmap of significant RI events](figures/heatmap_snorna_RI.png)](figures/heatmap_snorna_RI.png)
+![Global RI index per library](figures/S6_global_RI_index.png)
 
-### R Output Files
+![Per-event volcano plots](figures/S1_volcano_RI_events.png)
 
-| File | Description |
-|---|---|
-| `results/event_dPSI_results.tsv` | Per-event results: contrast, eventID, snoRNAName, ΔPSI, p-value, FDR |
-| `figures/heatmap_snorna_RI.png` | snoRNA × contrast heatmap of n_sig (FDR < 0.05) |
+**Sensitivity analysis.** Tumour vs Healthy tested in single-cell runs alone (8 vs 4), bulk alone (18 vs 5), and combined with technology as a covariate: no FDR-significant event in any setting.
 
 ---
 
 ## Machine Learning Module
 
-### Overview
+`ml/gleason_lr.py`
 
-`ml/gleason_lr.py` implements a fully leak-free supervised classification pipeline that predicts **Gleason grade** (Low ≤6 vs High ≥7) from retained intron PSI values.
+### Design (fixed before looking at results)
 
-**Dataset:** 136 samples (Low=36, High=100) × 184 RI events, matched between `RI_events_with_snoRNA.tsv` and `SraRunTable.csv` on SRR sample ID.
+- One model for every task: L2 logistic regression, C = 0.1, `class_weight="balanced"`
+- Missing-value filter, median imputation, zero-variance filter and scaling fitted **inside each training fold**
+- **Leave-one-patient-out** validation: all libraries of a patient are held out together
+- Metrics: ROC-AUC with 95% patient-bootstrap CI (2,000 resamples), balanced accuracy, MCC, permutation p-value (1,000 label shuffles at patient level, full evaluation re-run)
 
-### Design Principles
-
-**No data leakage.** All preprocessing steps are fitted exclusively on the training set and then applied to the validation set:
-
-```
-1. Stratified 80/20 split  ← only step that sees the full dataset
-2. SimpleImputer.fit(X_train)  → transform X_val
-3. Zero-variance mask from X_train  → apply to X_val
-4. StandardScaler.fit(X_train)  → transform X_val
-```
-
-**Robust evaluation.** A single 80/20 split on 136 samples gives unreliable estimates (1 misclassification = 3.6% accuracy shift). The pipeline runs **20 repeated stratified splits** and reports mean ± std — this is the number suitable for presentation.
-
-### Models
-
-| Model | Key settings |
+| ID | Task |
 |---|---|
-| **Logistic Regression** | L2 penalty, C selected by internal 5-fold CV from grid [0.001, 1], `class_weight="balanced"` |
-| **Linear SVM** | C=0.1, `class_weight="balanced"`, probabilities via `CalibratedClassifierCV` |
+| M0 | Naive evaluation (runs as samples, random 80/20 × 20) — reference only, shows the leakage |
+| M1 | Gleason ≤ 6 vs ≥ 7 from event-level PSI |
+| M2 | Gleason ≤ 6 vs ≥ 7 from snoRNA-level PSI |
+| M3 | Tumour vs adjacent normal from event-level PSI |
+| M4 | Unsupervised PCA + hierarchical clustering vs tumour/normal labels (adjusted Rand index) |
 
-### Results (20 Repeated Stratified Splits)
+### Results
 
-| Model | AUC | Accuracy | F1 |
-|---|---|---|---|
-| **Logistic Regression** | **0.930 ± 0.049** | 0.875 ± 0.058 | 0.917 ± 0.037 |
-| Linear SVM | 0.926 ± 0.048 | 0.855 ± 0.044 | 0.911 ± 0.024 |
+| Analysis | AUC (95% CI) | Balanced accuracy | MCC | Permutation p |
+|---|---|---|---|---|
+| M0 naive (reference only) | 0.920 ± 0.042 | — | — | — |
+| **M1 Gleason, event PSI** | **0.684 (0.31–0.95)** | 0.642 | 0.296 | 0.082 |
+| M2 Gleason, snoRNA PSI | 0.453 (0.17–0.71) | 0.507 | 0.013 | 0.567 |
+| M3 Tumour vs Normal | 0.340 (0.20–0.48) | 0.403 | −0.203 | 0.912 |
+| M4 Unsupervised | ARI −0.015 | — | — | 0.399 |
 
-> Both models show consistent performance across splits (low std), indicating the RI-derived PSI signal is reproducible and not an artifact of a single lucky split.
+M1 (34 libraries, ~19 patients, 9 Low / 25 High) shows a weak signal that does not reach significance. Its plain accuracy (73.5%) equals the majority-class baseline, which is why balanced accuracy and MCC are reported. The below-chance AUC in M3 is a known small-sample artefact of leave-one-out evaluation, not a reversed signal.
 
-### Top Predictive RI Events (Logistic Regression Coefficients)
+![ML results](figures/ml_results.png)
 
-**Positive — associated with High Gleason (≥7):**
+Model coefficients are saved in `results/ml/M1_coefficients_exploratory.tsv` and should not be interpreted as biomarkers.
 
-| Coefficient | Gene | snoRNA |
+---
+
+## Correction Log: What Changed from v1
+
+| Issue in v1 | Effect | Fix in v2 |
 |---|---|---|
-| +0.368 | RPS11 | — |
-| +0.256 | SNHG20 | ★ SNORD44 |
-| +0.245 | SNHG12 | ★ SNORD50B |
-| +0.205 | SNHG29 | ★ SNORD22 |
-| +0.196 | SNHG17 | ★ SNORA71 |
+| 4 sequencing lanes per library counted as 4 samples | Sample size inflated ~4×; p-values too small; lanes of one library in both train and validation sets | PSI averaged per library; mixed model (S5) uses lanes correctly |
+| 12 single-cell runs mixed with bulk (4 in Healthy, 0 in Normal) | Technology confounded with group | Bulk only; single-cell tested separately as sensitivity analysis |
+| Tumour and normal of the same patient split across train/validation | Model could learn patient identity | Leave-one-patient-out |
+| Accuracy and F1 reported on imbalanced data | 87.5% accuracy vs 73.5% majority baseline | AUC with CI, balanced accuracy, MCC, permutation p |
 
-**Negative — associated with Low Gleason (≤6):**
-
-| Coefficient | Gene | snoRNA |
+| Result | v1 | v2 |
 |---|---|---|
-| −0.309 | SNHG8 | ★ SNORA61 |
-| −0.252 | SNHG12 | ★ SNORD50B |
-| −0.250 | SNHG29 | ★ SNORD28 |
-
-> **Key observation:** SNHG12 and SNHG29 appear in both lists at different intronic positions — the signal is isoform-specific, not gene-level. This is consistent with snoRT biology: different intron boundaries within the same host gene produce different snoRT candidates.
-
-### How to Run
-
-```bash
-# Install dependencies
-pip install pandas numpy scikit-learn matplotlib seaborn
-
-# Place input files in the same directory
-# - RI_events_with_snoRNA.tsv
-# - SraRunTable.csv
-
-python3 ml/gleason_lr.py
-```
-
-Output: `gleason_lr_results.png` — three-panel figure showing confusion matrix, ROC curves, and AUC distribution across 20 splits.
-
-### Interpretation Note
-
-Training accuracy is 1.0 (expected given n ≈ p in this dataset). The validation AUC of **0.930 ± 0.049** reflects genuine generalization, not memorization — confirmed by the stability across 20 independent splits. These findings are exploratory and require validation in an independent cohort.
+| Normal vs Healthy significant events | 17 | 0 (4 after removing single-cell only) |
+| Gleason classifier AUC | 0.930 | 0.684 (p = 0.08) |
 
 ---
 
@@ -357,49 +338,41 @@ Training accuracy is 1.0 (expected given n ≈ p in this dataset). The validatio
 ### Python
 
 - Python ≥ 3.8
-- `pandas`, `numpy`, `scikit-learn`, `matplotlib`, `seaborn`
+- `pandas`, `numpy`, `scikit-learn`, `scipy`, `matplotlib`, `joblib`
 - SRA Toolkit, Salmon, SUPPA2
 
 ```bash
-pip install pandas numpy scikit-learn matplotlib seaborn
+pip install pandas numpy scikit-learn scipy matplotlib joblib
 ```
 
 ### R
 
-- R ≥ 4.4.0
-- `readr`, `dplyr`, `tidyr`, `stringr`, `purrr`, `tibble`, `ggplot2`
+- R ≥ 4.3
+- `readr`, `dplyr`, `tidyr`, `stringr`, `purrr`, `tibble`, `ggplot2`, `lme4`, `lmerTest`
 
 ```r
-install.packages(c("readr","dplyr","tidyr","stringr","purrr","tibble","ggplot2"))
+install.packages(c("readr","dplyr","tidyr","stringr","purrr","tibble","ggplot2","lme4","lmerTest"))
 ```
 
 ---
 
-## Future Work 🚀
+## Future Work
 
+- [ ] **Power analysis** — Estimate the sample size needed to confirm the observed trends
+- [ ] **Independent validation (TCGA-PRAD)** — Run SUPPA2 on precomputed isoform TPMs (UCSC Xena, GENCODE v23); test pre-specified hypotheses on ~500 tumours and paired tumour/normal samples
+- [ ] **Second raw-data cohort (GSE54460)** — Apply the full pipeline to ~100 FFPE prostatectomy samples with Gleason scores
+- [ ] **Confirm patient IDs** from GEO sample annotations
 - [ ] **QC integration** — Add FastQC / MultiQC module + optional trimming
-- [ ] **Paired-end support** — Extend Salmon quantification for paired-end datasets
-- [ ] **snoRT isoform confirmation** — Intersect candidate RI events with snoRNA genomic coordinates to confirm snoRNA sequence is embedded in the retained intron
 - [ ] **Expression integration** — Combine TPM and PSI to prioritize events with both high expression and high intron retention
-- [ ] **Independent cohort validation** — Apply ML module to a held-out external dataset to validate AUC estimates
-- [ ] **Permutation testing** — Add statistical significance test for ML results (p-value for AUC vs. null distribution)
 - [ ] **Survival correlation** — Link snoRT candidates to clinical outcomes using TCGA metadata
-- [ ] **Gene ontology / pathway analysis** — Functional annotation of host genes with significant RI events
 
 ---
 
 ## Biological Summary
 
-Transcriptome-AutoPipeline provides a robust and automated framework for RNA-seq analysis, focusing on transcript quantification and retained intron detection in a prostate cancer cohort.
+Transcriptome-AutoPipeline automates RNA-seq analysis from raw public data to snoRNA-specific retained-intron profiles. In a prostate cancer cohort (39 bulk libraries from ~19 patients and 5 healthy donors) it identified **184 RI events overlapping 67 snoRNAs**.
 
-Across **168 samples** and **202 annotated RI events**, the pipeline identified:
-
-- **SNORD50B** as the top snoRT candidate — 7 significant RI events across two independent tumor-vs-healthy contrasts
-- **SNORA32** as the most broadly altered snoRNA — signal in 3 of 4 contrasts, grade-independent
-- **Zero significant events** in `Low_vs_High`, indicating tumor grade alone does not drive differential intron retention
-- The dominant signal in `Normal_vs_Healthy` (17 events at FDR < 0.05), consistent with field cancerization
-
-The machine learning module further demonstrates that the **aggregate PSI signature across 137 RI events** is sufficient to classify Gleason grade with AUC = 0.930 ± 0.049, with snoRNA host genes (SNHG12, SNHG20, SNHG29, SNHG8) among the strongest individual predictors.
+After replication-aware analysis, no RI event differed significantly between groups, and RI-based classification of Gleason grade did not exceed chance at the 0.05 level (AUC 0.68, p = 0.08). Nominal trends — lower global retention in healthy tissue and recurring snoRNAs such as SNORD23 and SNORD50B — are hypotheses for validation in larger, independent cohorts. The study is best read as an exploratory pilot in an understudied area, and as a worked example of how technical replicates and patient-level leakage can inflate results from public SRA data.
 
 ---
 
